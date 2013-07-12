@@ -24,6 +24,7 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var restler = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
 
@@ -36,16 +37,16 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
-var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
+var cheerioLoadHtml = function(htmlfile) {
+    return cheerio.load(htmlfile);
 };
 
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+var checkHtmlFile = function(html, checksfile) {
+    $ = cheerioLoadHtml(html);
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -64,11 +65,32 @@ var clone = function(fn) {
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists))
+        .option('-u, --url <url>', 'URL to html file') 
+		.parse(process.argv);
+    if (program.file && program.url) {
+	   console.log("Both -u and -f cannot be used in same invocation");
+	   exit;
+    }
+    if (program.file) {
+	var fileToCheck = fs.readFileSync(program.file);
+	var checkJson = checkHtmlFile(fileToCheck, program.checks);
+	var outJson = JSON.stringify(checkJson, null, 4);
+	console.log(outJson);
+	
+    } else if (program.url) {
+	restler.get(program.url).on('complete', function(result) {
+	    if (result instanceof Error) {
+		console.log("Error getting URL");
+	    } else {
+		//console.log("Success on GET request: checking html");
+		var fileToCheck = result.toString();
+		var checkJson = checkHtmlFile(fileToCheck, program.checks);
+		var outJson = JSON.stringify(checkJson, null, 4);
+		console.log(outJson);
+	    }
+	});
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
